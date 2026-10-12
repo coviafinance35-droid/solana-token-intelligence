@@ -1,0 +1,15 @@
+{
+  "name": "solana-token-intelligence",
+  "version": "1.0.0",
+  "private": false,
+  "description": "Live Solana token intelligence terminal combining Solflare UTL metadata with DexScreener market data.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check src/analysis.js"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}

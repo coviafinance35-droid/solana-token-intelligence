@@ -1,0 +1,65 @@
+# Solana Token Intelligence
+
+A production-oriented Solana token research terminal that combines **Solflare Unified Token List metadata** with **DexScreener live market data**. It is intentionally evidence-first: missing on-chain data is marked unavailable instead of being guessed, forecasts are labeled experimental, and no demo/mock market payloads are shipped.
+
+## What is working
+
+- Search by Solana mint, name/symbol, or DexScreener URL.
+- Solflare UTL API metadata lookup through `/v1/mints` and `/v1/search`.
+- DexScreener pair discovery through `/latest/dex/tokens/{mint}`.
+- Best-pair selection by reported USD liquidity.
+- Price, FDV/market cap, liquidity, volume, buys/sells, pair age, and DEX details.
+- Transparent 1–100 scoring engine with the requested weights, category explanations, coverage, and conservative missing-data treatment.
+- Experimental rule-based pump/dump/sideways estimates for 15m, 1h, and 4h; probabilities sum to 100%.
+- Evidence-backed research agent endpoint; it only summarizes retrieved fields and limitations.
+- Persistent snapshots and watchlist storage in `data/store.json`.
+- Provider health endpoint and responsive dark terminal UI.
+- Vendored copies of the requested upstream repositories in `upstream/utl-api` and `upstream/utl-aggregator`.
+
+## Run locally
+
+```bash
+npm test
+npm run check
+npm start
+```
+
+Open `http://localhost:3000`. To use another port:
+
+```bash
+PORT=8080 npm start
+```
+
+No API key is required for the live MVP because DexScreener and the documented public Solflare UTL instance are used server-side. Optional Helius/Solscan adapters are not enabled without credentials; the UI explicitly reports those data limitations rather than claiming security findings.
+
+## Architecture
+
+- `server.js` — dependency-light Node HTTP server, API routes, timeouts, normalization, persistence.
+- `src/analysis.js` — scoring, rule-based forecast, and evidence-backed research logic.
+- `public/` — responsive browser UI.
+- `data/store.json` — local persistent snapshots/watchlist; replace with Postgres/Drizzle for multi-user deployment.
+- `upstream/utl-api` — source and docs from `solflare-wallet/utl-api`, used as the contract reference for mint/search queries.
+- `upstream/utl-aggregator` — source and docs from `solflare-wallet/utl-aggregator`, used as the token identity/normalization reference and retained for future provider expansion.
+
+## API routes
+
+- `GET /api/token?q=<mint|symbol|url>`
+- `GET /api/compare?mints=<mint1>,<mint2>` (up to five in the UI contract)
+- `POST /api/research` with `{ "q": "<mint or symbol>", "question": "..." }`
+- `GET /api/watchlist`
+- `POST /api/watchlist` with `{ "mint": "...", "label": "..." }`
+- `DELETE /api/watchlist?mint=...`
+- `GET /api/health`
+
+## Important limitations
+
+The public UTL and DexScreener APIs do not provide every field in the product brief. Mint/freeze authorities, holder concentration, wallet activity, and historical accuracy validation require a Solana RPC/Helius/Solscan integration plus a scheduled database worker. They are deliberately shown as unavailable/conservative in this version. The forecast is a rule-based estimate, not a validated trading model and not investment advice.
+
+## Upstream attribution
+
+This project incorporates and retains code/documentation from:
+
+- https://github.com/solflare-wallet/utl-api
+- https://github.com/solflare-wallet/utl-aggregator
+
+The original upstream projects retain their original license files and attribution. This application is released under MIT for the application code.
