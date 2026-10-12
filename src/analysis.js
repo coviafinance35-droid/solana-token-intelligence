@@ -11,6 +11,12 @@ export const SCORE_WEIGHTS = {
 const n = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 const pct = (value) => n(value) ?? 0;
+function outlook(pump, dump, sideways) {
+  const values = [{ direction: 'pump', probability: pump }, { direction: 'dump', probability: dump }, { direction: 'sideways', probability: sideways }].sort((a, b) => b.probability - a.probability);
+  const top = values[0];
+  const label = top.direction === 'pump' ? 'PUMP BIAS' : top.direction === 'dump' ? 'DUMP BIAS' : 'SIDEWAYS / UNCERTAIN';
+  return { direction: top.direction, label, probability: top.probability, edge: Math.max(0, top.probability - values[1].probability) };
+}
 
 export function scoreToken(token) {
   const pair = token.pair;
@@ -55,13 +61,14 @@ export function forecastToken(token) {
   const volume = n(pair?.volume?.h1);
   const buys = n(pair?.txns?.h1?.buys);
   const sells = n(pair?.txns?.h1?.sells);
-  if (momentum === null && volume === null && buys === null) return { available: false, modelVersion: 'rule-based-v1', reason: 'Not enough short-horizon market data returned by DexScreener.' };
+  if (momentum === null && volume === null && buys === null) return { available: false, modelVersion: 'rule-based-v1', prediction: { direction: 'unknown', label: 'INSUFFICIENT DATA', probability: null }, reason: 'Not enough short-horizon market data returned by DexScreener.' };
   const imbalance = buys !== null && sells !== null && buys + sells ? (buys - sells) / (buys + sells) : 0;
   const signal = clamp((momentum ?? 0) / 8 + imbalance * 35 + (volume ? Math.log10(Math.max(volume, 1)) - 2 : 0), -100, 100);
   const pump = clamp(33.3 + signal * 0.32, 5, 82);
   const dump = clamp(33.3 - signal * 0.32, 5, 82);
   const sideways = Math.max(1, 100 - pump - dump);
-  return { available: true, modelVersion: 'rule-based-v1', generatedAt: new Date().toISOString(), threshold: '±5% movement', confidence: momentum !== null && buys !== null ? 'low' : 'very low', horizons: ['15m', '1h', '4h'].map((horizon, index) => { const factor = [0.75, 1, 1.15][index]; const p = clamp(33.3 + signal * 0.32 * factor, 5, 82); const d = clamp(33.3 - signal * 0.32 * factor, 5, 82); const roundedPump = Math.round(p); const roundedDump = Math.round(d); return { horizon, pump: roundedPump, dump: roundedDump, sideways: 100 - roundedPump - roundedDump }; }), signals: { momentum, imbalance, volume }, caveat: 'Experimental rule-based estimates, not validated predictive probabilities. Never a promise of returns.' };
+  const horizons = ['15m', '1h', '4h'].map((horizon, index) => { const factor = [0.75, 1, 1.15][index]; const p = clamp(33.3 + signal * 0.32 * factor, 5, 82); const d = clamp(33.3 - signal * 0.32 * factor, 5, 82); const roundedPump = Math.round(p); const roundedDump = Math.round(d); const sideways = 100 - roundedPump - roundedDump; return { horizon, pump: roundedPump, dump: roundedDump, sideways, outlook: outlook(roundedPump, roundedDump, sideways) }; });
+  return { available: true, modelVersion: 'rule-based-v1', generatedAt: new Date().toISOString(), threshold: '±5% movement', confidence: momentum !== null && buys !== null ? 'low' : 'very low', prediction: { ...horizons[1].outlook, horizon: '1h' }, horizons, signals: { momentum, imbalance, volume }, caveat: 'Experimental rule-based estimates, not validated predictive probabilities. “Pump” and “dump” mean a projected move of at least 5% in the stated horizon; this is not financial advice or a promise of returns.' };
 }
 
 export function buildResearch(token, question = '') {
