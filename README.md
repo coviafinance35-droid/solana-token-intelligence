@@ -51,9 +51,29 @@ No API key is required for the live MVP because DexScreener and the documented p
 - `DELETE /api/watchlist?mint=...`
 - `GET /api/health`
 
+## Automated price alerts
+
+Watchlist entries now support four threshold types: price above, price below, 24-hour percentage change above, and 24-hour percentage change below. Each entry also has an enable switch and a cooldown in minutes. The dashboard saves these rules through `PATCH /api/watchlist?mint=...`; the rules and notification history are stored in `data/store.json`.
+
+Run the alert processor as a separate production process:
+
+```bash
+ALERT_WEBHOOK_URL=https://your-notification-endpoint.example/alerts npm run start:worker
+```
+
+The worker polls DexScreener with provider timeouts, selects the highest-liquidity Solana pair, applies cooldown-based deduplication, records every fired or failed delivery, and sends a JSON webhook payload. If `ALERT_WEBHOOK_SECRET` is configured, it is sent as `X-Alert-Signature`. Delivery is intentionally webhook-based so it can connect to Slack, Discord, PagerDuty, email gateways, or an internal notification service without putting provider credentials in the browser. `ALERT_DRY_RUN=true` evaluates and logs alerts without sending them.
+
+For container deployment, use the included `docker-compose.yml`. It runs the API and worker as separate restartable services, shares a durable volume for the store, uses a worker lease to prevent duplicate processors, and includes an API health check:
+
+```bash
+ALERT_WEBHOOK_URL=https://your-notification-endpoint.example/alerts docker compose up -d --build
+```
+
+The worker defaults to a 60-second poll interval and a 30-minute per-rule cooldown. Configure `ALERT_POLL_INTERVAL_MS`, `ALERT_DEFAULT_COOLDOWN_MS`, `ALERT_WEBHOOK_URL`, `ALERT_WEBHOOK_SECRET`, and `ALERT_DRY_RUN` through the deployment environment. The minimum poll interval is one minute to respect provider limits. `GET /api/alerts` exposes recent audited delivery attempts and worker configuration status.
+
 ## Important limitations
 
-The public UTL and DexScreener APIs do not provide every field in the product brief. Mint/freeze authorities, holder concentration, wallet activity, and historical accuracy validation require a Solana RPC/Helius/Solscan integration plus a scheduled database worker. They are deliberately shown as unavailable/conservative in this version. The forecast is a rule-based estimate, not a validated trading model and not investment advice.
+The public UTL and DexScreener APIs do not provide every field in the product brief. Mint/freeze authorities, holder concentration, wallet activity, and historical accuracy validation require a Solana RPC/Helius/Solscan integration plus a scheduled database worker. They are deliberately shown as unavailable/conservative in this version. The forecast is a rule-based estimate, not a validated trading model and not investment advice. For high-volume deployments, replace the JSON persistence adapter with PostgreSQL/Drizzle; the worker/API boundaries and alert records are already separated for that migration.
 
 ## Upstream attribution
 

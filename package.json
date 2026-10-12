@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
+    "start:worker": "node src/alert-worker.js",
+    "start:all": "node server.js & node src/alert-worker.js",
     "dev": "node --watch server.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check src/analysis.js"
+    "check": "node --check server.js && node --check src/analysis.js && node --check src/store.js && node --check src/alert-worker.js"
   },
   "engines": { "node": ">=20" },
   "license": "MIT"
