@@ -28,6 +28,7 @@ export function scoreToken(token) {
   const holderCount = n(meta?.holders);
   const buy24 = n(pair?.txns?.h24?.buys);
   const sell24 = n(pair?.txns?.h24?.sells);
+  const onchain = token.onchainSecurity;
   const verified = meta?.verified === true;
   const coverage = [];
   const categories = [];
@@ -42,7 +43,11 @@ export function scoreToken(token) {
   add('momentum', 'Price momentum & trend', momentum === null ? 0 : 7.5 + clamp(momentum, -50, 50) * 0.15, 15, momentum === null ? 'No 24h price change returned.' : `${momentum >= 0 ? '+' : ''}${momentum.toFixed(2)}% over 24h.`, 'DexScreener');
   if (holderCount !== null) coverage.push('holders');
   add('holders', 'Holder distribution', holderCount === null ? 0 : Math.min(15, 4 + Math.log10(Math.max(holderCount, 1)) * 2.4), 15, holderCount === null ? 'Holder count is unavailable from the configured sources.' : `${holderCount.toLocaleString()} holders in the Solflare UTL metadata. Concentration is not inferred from this count.`, 'Solflare UTL');
-  add('security', 'Token security & authorities', 7.5, 15, 'Mint/freeze authorities require an RPC or Helius/Solscan credential; no safe assumption is made.', 'Unavailable / conservative');
+  const authorityPoints = onchain?.available ? (onchain.mintAuthorityRevoked ? 7.5 : 2.5) + (onchain.freezeAuthorityRevoked ? 7.5 : 2.5) : 7.5;
+  const concentrationPenalty = onchain?.available && onchain.topHolderPercent !== null && onchain.topHolderPercent > 50 ? 2.5 : onchain?.available && onchain.topHolderPercent !== null && onchain.topHolderPercent > 20 ? 1 : 0;
+  const securityPoints = onchain?.available ? Math.max(0, authorityPoints - concentrationPenalty) : 0;
+  if (onchain?.available) coverage.push('security');
+  add('security', 'Token security & authorities', securityPoints, 15, onchain?.available ? `${onchain.mintAuthorityRevoked ? 'Mint authority revoked' : 'Mint authority active'}; ${onchain.freezeAuthorityRevoked ? 'freeze authority revoked' : 'freeze authority active'}.${onchain.topHolderPercent === null ? '' : ` Largest returned account is ${onchain.topHolderPercent}% of reported supply.`}` : 'Helius RPC security data is unavailable; scored as unknown rather than safe.', onchain?.available ? 'Helius RPC' : 'Unavailable / conservative');
   const ratio = buy24 !== null && sell24 !== null ? (buy24 + sell24 ? buy24 / (buy24 + sell24) : 0.5) : null;
   if (ratio !== null) coverage.push('buy-sell');
   add('participation', 'Buyer growth & participation', ratio === null ? 0 : 5 + clamp((ratio - 0.5) * 10, -5, 5), 10, ratio === null ? 'Buy/sell counts unavailable.' : `${buy24} buys vs ${sell24} sells in 24h (${(ratio * 100).toFixed(0)}% buys).`, 'DexScreener');
@@ -78,6 +83,10 @@ export function buildResearch(token, question = '') {
   if (!pair.liquidity?.usd) risks.push('Liquidity is unavailable, so exit capacity cannot be measured.');
   else if (Number(pair.liquidity.usd) < 100000) risks.push('Reported liquidity is below $100k; slippage and exit capacity deserve extra scrutiny.');
   if (token.metadata?.verified !== true) risks.push('The UTL record is not marked verified.');
-  risks.push('Authority configuration and holder concentration are not inferred without an RPC/Helius/Solscan source.');
+  if (token.onchainSecurity?.available) {
+    if (!token.onchainSecurity.mintAuthorityRevoked) risks.push('Helius reports an active mint authority; additional supply can potentially be created.');
+    if (!token.onchainSecurity.freezeAuthorityRevoked) risks.push('Helius reports an active freeze authority; token transfers may be restrictable by the authority.');
+    if (token.onchainSecurity.topHolderPercent !== null && token.onchainSecurity.topHolderPercent > 20) risks.push(`The largest returned token account represents ${token.onchainSecurity.topHolderPercent}% of reported supply; this is a concentration warning, not a complete holder analysis.`);
+  } else risks.push('Authority configuration and holder concentration require an available Helius RPC lookup.');
   return { question, summary: score === null ? 'There is not enough live data to form a responsible score.' : `The measured score is ${score}/100: ${token.score.interpretation}`, bullish: [pair.priceChange?.h1 != null ? `1h price change is ${pair.priceChange.h1}%.` : null, pair.txns?.h24 ? `${pair.txns.h24.buys} buys and ${pair.txns.h24.sells} sells were reported over 24h.` : null, token.metadata?.verified ? 'Solflare UTL marks the token metadata as verified.' : null].filter(Boolean), bearish: risks, limitations: ['DexScreener provides pair-level market data, not proof of token safety.', 'Holder concentration, mint authority, freeze authority, and transaction history need an enabled on-chain provider.', 'Forecasts are rule-based and experimental.'], sources: [{ name: 'DexScreener', timestamp: token.marketFetchedAt }, { name: 'Solflare UTL API', timestamp: token.metadataFetchedAt }] };
 }
